@@ -1,5 +1,45 @@
 package golex
 
+// A lexer based on Rob Pikes 2011 talk for Google Technology User Group
+
+// Usage
+//
+// Declare constant of available tokens as follow:
+// const (
+// 	TokenText       TokenType = iota
+// 	TokenOpenBlock
+// 	TokenCloseBlock
+//  ...
+// )
+//
+// Create a state function to handle each token type
+// The state function must return a state function to move on or nil to end execution
+//
+// Example:
+// // state function to move through a block of text till it reaches the EOF
+// // emitting a text token and a EOF token before returning nil to end the lexer execution
+// func textStateFn(l *Lexer) StateFn {
+// 	for {
+// 		if l.Next() == eof {
+// 			break
+// 		}
+// 	}
+// 	if l.current > l.start {
+// 		l.Emit(TokenText)
+// 	}
+// 	l.Emit(TokenEOF)
+// 	return nil
+// }
+//
+// Initialise a lexer with New() passing in name, input, and intial state
+//
+// func main() {
+//
+// l := golex.New("txt", s, textStateFn)
+//
+// }
+//
+
 import (
 	"fmt"
 	"strings"
@@ -7,198 +47,103 @@ import (
 	"unicode/utf8"
 )
 
-// A lexer based on Rob Pikes 2011 talk for Google Technology User Group
-
 // represents a token returned from the lexer
 type Token struct {
-	Typ tokenType
+	Typ TokenType
 	Val string
 }
 
 // tokenType represents the type of tokens
-type tokenType int
+type TokenType int
 
 const (
-		tokenError tokenType = iota // value is text of error
+	TokenEOF   TokenType = -2 // END OF FILE
+	TokenError TokenType = -1 // Value contains error text
+)
 
-		tokenCloseBlock						// end of block, }}
-		tokenDot									// the cursor, '.'
-		tokenEOF									// END OF FILE
-		tokenElse									// else keyword
-		tokenEnd									// end keyword
-		tokenHelper								// helper method
-		tokenIdentifier						// identifier parameter
-		tokenIf										// if keyword
-		tokenNumber								// number
-		tokenOpenBlock						// start of block, {{
-		tokenRawString 						// raw quoted string
-		tokenString								// quoted string
-		tokenText									// plain text
-		)
+const eof = rune(TokenEOF)
 
-const eof = rune(tokenEOF)
-const openBlock = "{{"
-const closeBlock = "}}"
+// Represents the state of the lexer
+// As a function that returns a function
+type StateFn func(*Lexer) StateFn
 
-func (t Token) String() string {
-	switch t.Typ {
-	case tokenEOF:
-		return "EOF"
-	case tokenError:
-		return t.Val
-	}
-	if len(t.Val) > 200 {
-		return fmt.Sprintf("%.200q...", t.Val)
-	}
-	return fmt.Sprintf("%q", t.Val)
+type Lexer struct {
+	Name                  string
+	Input                 string
+	State                 StateFn
+	InitialState          StateFn
+	start, current, width int
+	Tokens                chan Token
 }
 
-// represents the state of the lexer
-// as a function that returns the next state
-type stateFn func(*Lexer) stateFn
+func New(name, input string, initialState StateFn) *Lexer {
+	return &Lexer{
+		Name:         name,
+		Input:        input,
+		State:        initialState,
+		InitialState: initialState,
+		start:        0,
+		current:      0,
+		Tokens:       make(chan Token, 2),
+	}
+}
 
-func (l *Lexer)Run() {
-	for state:= lexText; state != nil; {
+func (l *Lexer) RunSync() {
+	l.Tokens = make(chan Token, len(l.Input)/2)
+	l.run()
+}
+
+func (l *Lexer) RunAsync() {
+	l.Tokens = make(chan Token, len(l.Input)/2)
+	go l.run()
+}
+
+// Private run method
+func (l *Lexer) run() {
+	for state := l.InitialState; state != nil; {
 		state = state(l)
 	}
 	close(l.Tokens)
 }
 
-type Lexer struct {
-	Name string
-	Input string
-	State stateFn
-	start, current, width int
-	Tokens chan Token
-}
-
-func New(name, input string) *Lexer {
-	return &Lexer{
-		Name: name,
-		Input: input,
-		State: lexText,
-		start: 0,
-		current: 0,
-		Tokens: make(chan Token, 2),
+// Listen returns the most recent token received from the channel
+// And a boolean value for if the lexer has finished scanning
+func (l *Lexer) Listen() (t Token, done bool) {
+	select {
+	case tok := <-l.Tokens:
+		if tok.Typ == TokenEOF {
+			return tok, true
+		}
+		return tok, false
 	}
 }
 
-func (l *Lexer) NextToken() Token {
+// Sync method to move through the input and return tokens
+func (l *Lexer) NextToken() (Token, bool) {
 	for {
 		select {
 		case token := <-l.Tokens:
-			return token
+			if token.Typ == TokenEOF {
+				return token, true 
+			} else {
+				return token, false
+			}
 		default:
 			l.State = l.State(l)
 		}
 	}
 }
 
-func (l *Lexer) emit(tt tokenType) {
+// Sends token to the Tokens channel and moves starting position to current position
+func (l *Lexer) Emit(tt TokenType) {
 	token := Token{tt, l.Input[l.start:l.current]}
 	l.Tokens <- token
 
 	l.start = l.current
 }
 
-func lexText(l *Lexer) stateFn {
-	for {
-		if strings.HasPrefix(l.Input[l.current:], openBlock) {
-			if l.current > l.start {
-				l.emit(tokenText)
-			}
-			return lexOpenBlock
-		}
-		if l.next() == eof { break }
-	}
-	// Correctly reached EOF.
-	if l.current > l.start {
-		l.emit(tokenText)
-	}
-	l.emit(tokenEOF)
-	return nil
-}
-
-func lexOpenBlock(l *Lexer) stateFn {
-	l.current += len(openBlock)
-	l.emit(tokenOpenBlock)
-	return lexInsideAction
-}
-
-func lexCloseBlock(l *Lexer) stateFn {
-	l.current += len(closeBlock)
-	l.emit(tokenCloseBlock)
-	return lexText
-}
-
-func lexInsideAction(l *Lexer) stateFn {
-	for {
-		if strings.HasPrefix(l.Input[l.current:], closeBlock) {
-			return lexCloseBlock
-		}
-		switch r := l.next(); {
-		case r == eof || r == '\n':
-			return l.errorf("unclosed action")
-		case isSpace(r):
-			l.ignore()
-		case r == '+' || r == '-' || '0' <= r && r <= '9':
-			l.backup()
-			return lexNumber
-		case isAlpha(r):
-			l.backup()
-			l.start = l.current
-			return lexIdentifier
-		}
-	}
-}
-
-func lexIdentifier(l *Lexer) stateFn {
-	for {
-		if strings.HasPrefix(l.Input[l.current:], closeBlock) {
-			if l.current > l.start {
-				l.emit(tokenIdentifier)
-			}
-			return lexCloseBlock
-		}
-		switch r := l.next(); {
-		case r == eof || r == '\n':
-			return l.errorf("unclosed action")
-		case isSpace(r):
-			l.ignore()
-		}
-	}
-}
-
-func lexNumber(l *Lexer) stateFn {
-	l.accept("+-")
-	digits := "0123456789"
-
-	if l.accept("0") && l.accept("xX") {
-		digits = "0123456789abcdefABCDEF"
-	}
-	l.acceptRun(digits)
-
-	if l.accept("."){
-		l.acceptRun(digits)
-	}
-
-	if l.accept("eE") {
-		l.accept("+-")
-		l.acceptRun("0123456789")
-	}
-	// imaginary number
-	l.accept("i")
-
-	if isAlpha(l.peek()) {
-		l.next()
-		return l.errorf("bad number syntax: %q", l.Input[l.start:l.current])
-	}
-	l.emit(tokenNumber)
-	return lexInsideAction
-}
-
 // Lexer helpers
-func (l *Lexer) next() (rune) {
+func (l *Lexer) Next() rune {
 	var res rune
 	if l.current >= len(l.Input) {
 		l.width = 0
@@ -209,32 +154,33 @@ func (l *Lexer) next() (rune) {
 	return res
 }
 
-func (l *Lexer) ignore() {
+func (l *Lexer) Ignore() {
 	l.start = l.current
 }
 
-func (l *Lexer) backup(){
+func (l *Lexer) Backup() {
 	l.current -= l.width
 }
 
 // Returns the next character without moving the lexer forward
-func (l *Lexer) peek() rune {
-	res := l.next()
-	l.backup()
+func (l *Lexer) Peek() rune {
+	res := l.Next()
+	l.Backup()
 	return res
 }
 
 func (l *Lexer) accept(valid string) bool {
-	if strings.IndexRune(valid, l.next()) >= 0 {
+	if strings.IndexRune(valid, l.Next()) >= 0 {
 		return true
 	}
-	l.backup()
+	l.Backup()
 	return false
 }
 
 func (l *Lexer) acceptRun(valid string) {
-	for strings.IndexRune(valid, l.next()) >= 0 {}
-	l.backup()
+	for strings.IndexRune(valid, l.Next()) >= 0 {
+	}
+	l.Backup()
 }
 
 func isSpace(r rune) bool {
@@ -245,11 +191,16 @@ func isAlpha(r rune) bool {
 	return unicode.IsLetter(r)
 }
 
-// returns an error token and terminates the scan
-// by passing nil pointer which will become the next state, terminating run loop
-func (l *Lexer) errorf(format string, args ...interface{}) stateFn {
+func (l *Lexer) nextHasPrefix(prefix string) bool {
+	next := l.Input[l.current:]
+	return strings.HasPrefix(next, prefix)
+}
+
+// Returns an error token and terminates the scan
+// By passing nil pointer which will become the next state, terminating run loop
+func (l *Lexer) errorf(format string, args ...interface{}) StateFn {
 	l.Tokens <- Token{
-		tokenError,
+		TokenError,
 		fmt.Sprintf(format, args...),
 	}
 	return nil
