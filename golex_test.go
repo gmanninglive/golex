@@ -51,13 +51,15 @@ func mockTextStateFn(l *Lexer) StateFn {
 			return mockCharOStateFn
 		}
 
-		if l.Next() == eof {
+		if l.Next() == EOF {
 			break
 		}
+
 	}
 	if l.current > l.start {
 		l.Emit(TokenText)
 	}
+	
 	l.Emit(TokenEOF)
 	return nil
 }
@@ -137,9 +139,9 @@ func TestLex(t *testing.T) {
 		}
 	})
 
-	t.Run("Using RunAsync() Method", func(t *testing.T) {
+	t.Run("Using RunConc() Method", func(t *testing.T) {
 		l := New("test", string(f), mockTextStateFn)
-		l.RunAsync()
+		l.RunConc()
 
 		var received []Token
 		for {

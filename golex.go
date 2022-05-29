@@ -20,7 +20,7 @@ package golex
 // // emitting a text token and a EOF token before returning nil to end the lexer execution
 // func textStateFn(l *Lexer) StateFn {
 // 	for {
-// 		if l.Next() == eof {
+// 		if l.Next() == EOF {
 // 			break
 // 		}
 // 	}
@@ -61,7 +61,7 @@ const (
 	TokenError TokenType = -1 // Value contains error text
 )
 
-const eof = rune(TokenEOF)
+const EOF = rune(TokenEOF)
 
 // Represents the state of the lexer
 // As a function that returns a function
@@ -93,7 +93,7 @@ func (l *Lexer) RunSync() {
 	l.run()
 }
 
-func (l *Lexer) RunAsync() {
+func (l *Lexer) RunConc() {
 	l.Tokens = make(chan Token, len(l.Input)/2)
 	go l.run()
 }
@@ -147,7 +147,7 @@ func (l *Lexer) Next() rune {
 	var res rune
 	if l.current >= len(l.Input) {
 		l.width = 0
-		return eof
+		return EOF
 	}
 	res, l.width = utf8.DecodeRuneInString(l.Input[l.current:])
 	l.current += l.width
