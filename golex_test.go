@@ -23,29 +23,29 @@ const (
 
 func mockTextStateFn(l *Lexer) StateFn {
 	for {
-		if l.nextHasPrefix(openBlock) {
-			if l.current > l.start {
+		if l.NextHasPrefix(openBlock) {
+			if l.Current > l.Start {
 				l.Emit(TokenText)
 			}
 			return mockOpenBlockStateFn
 		}
 
-		if l.nextHasPrefix(closeBlock) {
-			if l.current > l.start {
+		if l.NextHasPrefix(closeBlock) {
+			if l.Current > l.Start {
 				l.Emit(TokenText)
 			}
 			return mockCloseBlockStateFn
 		}
 
-		if l.nextHasPrefix(newLine) {
-			if l.current > l.start {
+		if l.NextHasPrefix(newLine) {
+			if l.Current > l.Start {
 				l.Emit(TokenText)
 			}
 			return mockNewLineStateFn
 		}
 
-		if l.nextHasPrefix("o") {
-			if l.current > l.start {
+		if l.NextHasPrefix("o") {
+			if l.Current > l.Start {
 				l.Emit(TokenText)
 			}
 			return mockCharOStateFn
@@ -56,34 +56,34 @@ func mockTextStateFn(l *Lexer) StateFn {
 		}
 
 	}
-	if l.current > l.start {
+	if l.Current > l.Start {
 		l.Emit(TokenText)
 	}
-	
+
 	l.Emit(TokenEOF)
 	return nil
 }
 
 func mockOpenBlockStateFn(l *Lexer) StateFn {
-	l.current += len(openBlock)
+	l.Current += len(openBlock)
 	l.Emit(TokenOpenBlock)
 	return mockTextStateFn
 }
 
 func mockCloseBlockStateFn(l *Lexer) StateFn {
-	l.current += len(closeBlock)
+	l.Current += len(closeBlock)
 	l.Emit(TokenCloseBlock)
 	return mockTextStateFn
 }
 
 func mockNewLineStateFn(l *Lexer) StateFn {
-	l.current += len(newLine)
+	l.Current += len(newLine)
 	l.Emit(TokenNewLine)
 	return mockTextStateFn
 }
 
 func mockCharOStateFn(l *Lexer) StateFn {
-	l.current += len("o")
+	l.Current += len("o")
 	l.Emit(TokenCharO)
 	return mockTextStateFn
 }
@@ -97,7 +97,9 @@ func TestLex(t *testing.T) {
 
 		for {
 			token, done := l.NextToken()
-			if done { break }
+			if done {
+				break
+			}
 			received = append(received, token)
 		}
 

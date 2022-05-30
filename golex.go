@@ -72,7 +72,7 @@ type Lexer struct {
 	Input                 string
 	State                 StateFn
 	InitialState          StateFn
-	start, current, width int
+	Start, Current, Width int
 	Tokens                chan Token
 }
 
@@ -82,8 +82,8 @@ func New(name, input string, initialState StateFn) *Lexer {
 		Input:        input,
 		State:        initialState,
 		InitialState: initialState,
-		start:        0,
-		current:      0,
+		Start:        0,
+		Current:      0,
 		Tokens:       make(chan Token, 2),
 	}
 }
@@ -124,7 +124,7 @@ func (l *Lexer) NextToken() (Token, bool) {
 		select {
 		case token := <-l.Tokens:
 			if token.Typ == TokenEOF {
-				return token, true 
+				return token, true
 			} else {
 				return token, false
 			}
@@ -136,30 +136,30 @@ func (l *Lexer) NextToken() (Token, bool) {
 
 // Sends token to the Tokens channel and moves starting position to current position
 func (l *Lexer) Emit(tt TokenType) {
-	token := Token{tt, l.Input[l.start:l.current]}
+	token := Token{tt, l.Input[l.Start:l.Current]}
 	l.Tokens <- token
 
-	l.start = l.current
+	l.Start = l.Current
 }
 
 // Lexer helpers
 func (l *Lexer) Next() rune {
 	var res rune
-	if l.current >= len(l.Input) {
-		l.width = 0
+	if l.Current >= len(l.Input) {
+		l.Width = 0
 		return EOF
 	}
-	res, l.width = utf8.DecodeRuneInString(l.Input[l.current:])
-	l.current += l.width
+	res, l.Width = utf8.DecodeRuneInString(l.Input[l.Current:])
+	l.Current += l.Width
 	return res
 }
 
 func (l *Lexer) Ignore() {
-	l.start = l.current
+	l.Start = l.Current
 }
 
 func (l *Lexer) Backup() {
-	l.current -= l.width
+	l.Current -= l.Width
 }
 
 // Returns the next character without moving the lexer forward
@@ -169,7 +169,7 @@ func (l *Lexer) Peek() rune {
 	return res
 }
 
-func (l *Lexer) accept(valid string) bool {
+func (l *Lexer) Accept(valid string) bool {
 	if strings.IndexRune(valid, l.Next()) >= 0 {
 		return true
 	}
@@ -177,28 +177,28 @@ func (l *Lexer) accept(valid string) bool {
 	return false
 }
 
-func (l *Lexer) acceptRun(valid string) {
+func (l *Lexer) AcceptRun(valid string) {
 	for strings.IndexRune(valid, l.Next()) >= 0 {
 	}
 	l.Backup()
 }
 
-func isSpace(r rune) bool {
+func IsSpace(r rune) bool {
 	return unicode.IsSpace(r)
 }
 
-func isAlpha(r rune) bool {
+func IsAlpha(r rune) bool {
 	return unicode.IsLetter(r)
 }
 
-func (l *Lexer) nextHasPrefix(prefix string) bool {
-	next := l.Input[l.current:]
+func (l *Lexer) NextHasPrefix(prefix string) bool {
+	next := l.Input[l.Current:]
 	return strings.HasPrefix(next, prefix)
 }
 
 // Returns an error token and terminates the scan
 // By passing nil pointer which will become the next state, terminating run loop
-func (l *Lexer) errorf(format string, args ...interface{}) StateFn {
+func (l *Lexer) Errorf(format string, args ...interface{}) StateFn {
 	l.Tokens <- Token{
 		TokenError,
 		fmt.Sprintf(format, args...),
