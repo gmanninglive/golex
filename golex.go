@@ -142,6 +142,13 @@ func (l *Lexer) Emit(tt TokenType) {
 	l.Start = l.Current
 }
 
+// Emit if current position greater than start position
+func (l *Lexer) CheckEmit(t TokenType) {
+	if l.Current > l.Start {
+		l.Emit(t)
+	}
+}
+
 // Lexer helpers
 func (l *Lexer) Next() rune {
 	var res rune
